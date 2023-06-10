@@ -85,7 +85,7 @@ fn list_transfer(
 // TODO(#2): add new items to TODO
 // TODO(#3): delete items
 // TODO(#4): edit the items
-// TODO: keep track of date when the item was DONE
+// TODO(#5): keep track of date when the item was DONE
 // TODO: undo system
 fn main() {
     initscr();
