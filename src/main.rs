@@ -43,6 +43,18 @@ impl Ui {
     }
     fn end(&mut self) {}
 }
+enum Focus {
+    Todo,
+    Done,
+}
+impl Focus {
+    fn toggle(&self) -> Self {
+        match self {
+            Focus::Todo => Focus::Done,
+            Focus::Done => Focus::Todo,
+        }
+    }
+}
 fn main() {
     initscr();
     noecho();
@@ -56,30 +68,36 @@ fn main() {
         "Buy a bread".to_string(),
         "Make a cup of tea".to_string(),
     ];
+    let mut todo_curr: usize = 0;
     let mut dones: Vec<String> = vec![
         "Start the stream".to_string(),
         "Have a breakfast".to_string(),
     ];
     let mut done_curr: usize = 0;
-    let mut todo_curr: usize = 0;
+    let mut focus = Focus::Todo;
     let mut ui = Ui::default();
     while !quit {
         erase();
         ui.begin(0, 0);
         {
-            ui.label("TODO:", REGULAR_PAIR);
-            ui.begin_list(todo_curr);
-            for (index, todo) in todos.iter().enumerate() {
-                ui.list_element(&format!("- [ ] {}", todo), index);
+            match focus {
+                Focus::Todo => {
+                    ui.label("TODO:", REGULAR_PAIR);
+                    ui.begin_list(todo_curr);
+                    for (index, todo) in todos.iter().enumerate() {
+                        ui.list_element(&format!("- [ ] {}", todo), index);
+                    }
+                    ui.end_list();
+                }
+                Focus::Done => {
+                    ui.label("DONE:", REGULAR_PAIR);
+                    ui.begin_list(done_curr);
+                    for (index, done) in dones.iter().enumerate() {
+                        ui.list_element(&format!("- [x] {}", done), index);
+                    }
+                    ui.end_list();
+                }
             }
-            ui.end_list();
-            ui.label("--------------------------------------", REGULAR_PAIR);
-            ui.label("DONE:", REGULAR_PAIR);
-            ui.begin_list(0);
-            for (index, done) in dones.iter().enumerate() {
-                ui.list_element(&format!("- [x] {}", done), index + 1);
-            }
-            ui.end_list();
         }
         ui.end();
         refresh();
@@ -105,7 +123,12 @@ fn main() {
                     dones.push(todos.remove(todo_curr));
                 }
             }
-            _ => {}
+            '\t' => {
+                focus = focus.toggle();
+            }
+            _ => {
+                todos.push(format!("{}", key));
+            }
         }
     }
     endwin();
