@@ -82,7 +82,7 @@ fn list_transfer(
     }
 }
 // TODO(#1): persist the state of the application
-// TODO: add new items to TODO
+// TODO(#2): add new items to TODO
 // TODO: delete items
 // TODO: edit the items
 // TODO: keep track of date when the item was DONE
