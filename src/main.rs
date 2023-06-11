@@ -1,7 +1,7 @@
 use ncurses::*;
 use std::cmp;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::ops::{Add, Mul};
 use std::{env, process};
 const REGULAR_PAIR: i16 = 0;
@@ -193,10 +193,10 @@ fn list_transfer(
         }
     }
 }
-fn load_state(todos: &mut Vec<String>, dones: &mut Vec<String>, file_path: &str) {
-    let file = File::open(file_path).unwrap();
+fn load_state(todos: &mut Vec<String>, dones: &mut Vec<String>, file_path: &str) -> io::Result<()> {
+    let file = File::open(file_path)?;
     for (index, line) in BufReader::new(file).lines().enumerate() {
-        match parse_item(&line.unwrap()) {
+        match parse_item(&line?) {
             Some((Status::Todo, title)) => {
                 todos.push(title.to_string());
             }
@@ -209,6 +209,7 @@ fn load_state(todos: &mut Vec<String>, dones: &mut Vec<String>, file_path: &str)
             }
         }
     }
+    Ok(())
 }
 fn save_state(todos: &[String], dones: &[String], file_path: &str) {
     let mut file = File::create(file_path).unwrap();
@@ -240,7 +241,20 @@ fn main() {
     let mut todo_curr: usize = 0;
     let mut dones = Vec::<String>::new();
     let mut done_curr: usize = 0;
-    load_state(&mut todos, &mut dones, &file_path);
+    let mut notification: String;
+    match load_state(&mut todos, &mut dones, &file_path) {
+        Ok(()) => notification = format!("Loaded file {}", file_path),
+        Err(error) => {
+            if error.kind() == ErrorKind::NotFound {
+                notification = format!("New file {}", file_path)
+            } else {
+                panic!(
+                    "Could not load state from file `{}`: {:?}",
+                    file_path, error
+                );
+            }
+        }
+    }
     initscr();
     noecho();
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
@@ -256,52 +270,59 @@ fn main() {
         let mut x = 0;
         let mut y = 0;
         getmaxyx(stdscr(), &mut y, &mut x);
-        ui.begin(Vec2::new(0, 0), LayoutKind::Horz);
+        ui.begin(Vec2::new(0, 0), LayoutKind::Vert);
         {
-            ui.begin_layout(LayoutKind::Vert);
+            ui.label_fixed_width(&notification, x, REGULAR_PAIR);
+            notification.clear();
+            ui.label_fixed_width("", x, REGULAR_PAIR);
+            ui.begin_layout(LayoutKind::Horz);
             {
-                ui.label_fixed_width(
-                    "TODO",
-                    x / 2,
-                    if panel == Status::Todo {
-                        HIGHLIGHT_PAIR
-                    } else {
-                        REGULAR_PAIR
-                    },
-                );
-                for (index, todo) in todos.iter().enumerate() {
-                    ui.label(
-                        &format!("- [ ] {}", todo),
-                        if index == todo_curr && panel == Status::Todo {
+                ui.begin_layout(LayoutKind::Vert);
+                {
+                    ui.label_fixed_width(
+                        "TODO",
+                        x / 2,
+                        if panel == Status::Todo {
                             HIGHLIGHT_PAIR
                         } else {
                             REGULAR_PAIR
                         },
                     );
+                    for (index, todo) in todos.iter().enumerate() {
+                        ui.label(
+                            &format!("- [ ] {}", todo),
+                            if index == todo_curr && panel == Status::Todo {
+                                HIGHLIGHT_PAIR
+                            } else {
+                                REGULAR_PAIR
+                            },
+                        );
+                    }
                 }
-            }
-            ui.end_layout();
-            ui.begin_layout(LayoutKind::Vert);
-            {
-                ui.label_fixed_width(
-                    "DONE",
-                    x / 2,
-                    if panel == Status::Done {
-                        HIGHLIGHT_PAIR
-                    } else {
-                        REGULAR_PAIR
-                    },
-                );
-                for (index, done) in dones.iter().enumerate() {
-                    ui.label(
-                        &format!("- [x] {}", done),
-                        if index == done_curr && panel == Status::Done {
+                ui.end_layout();
+                ui.begin_layout(LayoutKind::Vert);
+                {
+                    ui.label_fixed_width(
+                        "DONE",
+                        x / 2,
+                        if panel == Status::Done {
                             HIGHLIGHT_PAIR
                         } else {
                             REGULAR_PAIR
                         },
                     );
+                    for (index, done) in dones.iter().enumerate() {
+                        ui.label(
+                            &format!("- [x] {}", done),
+                            if index == done_curr && panel == Status::Done {
+                                HIGHLIGHT_PAIR
+                            } else {
+                                REGULAR_PAIR
+                            },
+                        );
+                    }
                 }
+                ui.end_layout();
             }
             ui.end_layout();
         }
@@ -335,8 +356,14 @@ fn main() {
                 Status::Done => list_last(&dones, &mut done_curr),
             },
             '\n' => match panel {
-                Status::Todo => list_transfer(&mut dones, &mut todos, &mut todo_curr),
-                Status::Done => list_transfer(&mut todos, &mut dones, &mut done_curr),
+                Status::Todo => {
+                    list_transfer(&mut dones, &mut todos, &mut todo_curr);
+                    notification.push_str("Done")
+                }
+                Status::Done => {
+                    list_transfer(&mut todos, &mut dones, &mut done_curr);
+                    notification.push_str("No, not done yet...")
+                }
             },
             '\t' => {
                 panel = panel.toggle();
@@ -346,6 +373,7 @@ fn main() {
             }
         }
     }
-    save_state(&todos, &dones, &file_path);
     endwin();
+    save_state(&todos, &dones, &file_path);
+    println!("Saved state to {}", file_path);
 }
