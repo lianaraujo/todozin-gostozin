@@ -6,7 +6,6 @@ use std::ops::{Add, Mul};
 use std::{env, process};
 const REGULAR_PAIR: i16 = 0;
 const HIGHLIGHT_PAIR: i16 = 1;
-type Id = usize;
 #[derive(Default, Copy, Clone)]
 struct Vec2 {
     x: i32,
@@ -45,13 +44,6 @@ struct Layout {
     size: Vec2,
 }
 impl Layout {
-    fn new(kind: LayoutKind, pos: Vec2) -> Self {
-        Self {
-            kind,
-            pos,
-            size: Vec2::new(0, 0),
-        }
-    }
     fn available_pos(&self) -> Vec2 {
         use LayoutKind::*;
         match self.kind {
@@ -140,15 +132,13 @@ impl Status {
     }
 }
 fn parse_item(line: &str) -> Option<(Status, &str)> {
-    let todo_prefix = "TODO: ";
-    let done_prefix = "DONE: ";
-    if line.starts_with(todo_prefix) {
-        return Some((Status::Todo, &line[todo_prefix.len()..]));
-    }
-    if line.starts_with(done_prefix) {
-        return Some((Status::Done, &line[done_prefix.len()..]));
-    }
-    return None;
+    let todo_item = line
+        .strip_prefix("TODO: ")
+        .map(|title| (Status::Todo, title));
+    let done_item = line
+        .strip_prefix("DONE: ")
+        .map(|title| (Status::Done, title));
+    todo_item.or(done_item)
 }
 fn list_up(list: &Vec<String>, list_curr: &mut usize) {
     if *list_curr > 0 {
@@ -171,13 +161,13 @@ fn list_transfer(
 ) {
     if *list_src_curr < list_src.len() {
         list_dst.push(list_src.remove(*list_src_curr));
-        if *list_src_curr >= list_src.len() && list_src.len() > 0 {
+        if *list_src_curr >= list_src.len() && !list_src.is_empty() {
             *list_src_curr = list_src.len() - 1;
         }
     }
 }
 fn load_state(todos: &mut Vec<String>, dones: &mut Vec<String>, file_path: &str) {
-    let file = File::open(file_path.clone()).unwrap();
+    let file = File::open(file_path).unwrap();
     for (index, line) in BufReader::new(file).lines().enumerate() {
         match parse_item(&line.unwrap()) {
             Some((Status::Todo, title)) => {
@@ -193,7 +183,7 @@ fn load_state(todos: &mut Vec<String>, dones: &mut Vec<String>, file_path: &str)
         }
     }
 }
-fn save_state(todos: &Vec<String>, dones: &Vec<String>, file_path: &str) {
+fn save_state(todos: &[String], dones: &[String], file_path: &str) {
     let mut file = File::create(file_path).unwrap();
     for todo in todos.iter() {
         writeln!(file, "TODO: {}", todo).unwrap();
