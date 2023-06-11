@@ -217,7 +217,7 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
 // TODO(#9): save the state on SIGINT
-// TODO: jump to the end and beggining of the list
+// TODO(#10): jump to the end and beggining of the list
 fn main() {
     let mut args = env::args();
     args.next().unwrap();
