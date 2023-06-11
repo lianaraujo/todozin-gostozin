@@ -229,7 +229,14 @@ fn main() {
         {
             ui.begin_layout(LayoutKind::Vert);
             {
-                ui.label("TODO:", REGULAR_PAIR);
+                ui.label(
+                    "TODO",
+                    if tab == Status::Todo {
+                        HIGHLIGHT_PAIR
+                    } else {
+                        REGULAR_PAIR
+                    },
+                );
                 for (index, todo) in todos.iter().enumerate() {
                     ui.label(
                         &format!("- [ ] {}", todo),
@@ -244,11 +251,18 @@ fn main() {
             ui.end_layout();
             ui.begin_layout(LayoutKind::Vert);
             {
-                ui.label("DONE:", REGULAR_PAIR);
+                ui.label(
+                    "DONE",
+                    if tab == Status::Done {
+                        HIGHLIGHT_PAIR
+                    } else {
+                        REGULAR_PAIR
+                    },
+                );
                 for (index, done) in dones.iter().enumerate() {
                     ui.label(
                         &format!("- [x] {}", done),
-                        if index == todo_curr && tab == Status::Done {
+                        if index == done_curr && tab == Status::Done {
                             HIGHLIGHT_PAIR
                         } else {
                             REGULAR_PAIR
