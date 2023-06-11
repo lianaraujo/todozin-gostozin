@@ -143,18 +143,34 @@ fn parse_item(line: &str) -> Option<(Status, &str)> {
         .map(|title| (Status::Done, title));
     todo_item.or(done_item)
 }
-fn list_up(list: &Vec<String>, list_curr: &mut usize) {
+fn list_drag_up(list: &mut [String], list_curr: &mut usize) {
     if *list_curr > 0 {
+        list.swap(*list_curr, *list_curr - 1);
         *list_curr -= 1;
-    } else {
-        *list_curr = list.len() - 1;
+    }
+}
+fn list_drag_down(list: &mut [String], list_curr: &mut usize) {
+    if *list_curr + 1 < list.len() {
+        list.swap(*list_curr, *list_curr + 1);
+        *list_curr += 1;
+    }
+}
+fn list_up(list: &Vec<String>, list_curr: &mut usize) {
+    if !list.is_empty() {
+        if *list_curr > 0 {
+            *list_curr -= 1;
+        } else {
+            *list_curr = list.len() - 1;
+        }
     }
 }
 fn list_down(list: &Vec<String>, list_curr: &mut usize) {
-    if *list_curr == list.len() - 1 {
-        *list_curr = 0
-    } else {
-        *list_curr += 1
+    if !list.is_empty() {
+        if *list_curr == list.len() - 1 {
+            *list_curr = 0
+        } else {
+            *list_curr += 1
+        }
     }
 }
 fn list_transfer(
@@ -201,6 +217,7 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
 // TODO: save the state on SIGINT
+// TODO: jump to the end and beggining of the list
 fn main() {
     let mut args = env::args();
     args.next().unwrap();
@@ -224,7 +241,7 @@ fn main() {
     init_pair(REGULAR_PAIR, COLOR_WHITE, COLOR_BLACK);
     init_pair(HIGHLIGHT_PAIR, COLOR_BLACK, COLOR_WHITE);
     let mut quit = false;
-    let mut tab = Status::Todo;
+    let mut panel = Status::Todo;
     let mut ui = Ui::default();
     while !quit {
         erase();
@@ -238,7 +255,7 @@ fn main() {
                 ui.label_fixed_width(
                     "TODO",
                     x / 2,
-                    if tab == Status::Todo {
+                    if panel == Status::Todo {
                         HIGHLIGHT_PAIR
                     } else {
                         REGULAR_PAIR
@@ -247,7 +264,7 @@ fn main() {
                 for (index, todo) in todos.iter().enumerate() {
                     ui.label(
                         &format!("- [ ] {}", todo),
-                        if index == todo_curr && tab == Status::Todo {
+                        if index == todo_curr && panel == Status::Todo {
                             HIGHLIGHT_PAIR
                         } else {
                             REGULAR_PAIR
@@ -261,7 +278,7 @@ fn main() {
                 ui.label_fixed_width(
                     "DONE",
                     x / 2,
-                    if tab == Status::Done {
+                    if panel == Status::Done {
                         HIGHLIGHT_PAIR
                     } else {
                         REGULAR_PAIR
@@ -270,7 +287,7 @@ fn main() {
                 for (index, done) in dones.iter().enumerate() {
                     ui.label(
                         &format!("- [x] {}", done),
-                        if index == done_curr && tab == Status::Done {
+                        if index == done_curr && panel == Status::Done {
                             HIGHLIGHT_PAIR
                         } else {
                             REGULAR_PAIR
@@ -285,23 +302,31 @@ fn main() {
         let key = getch();
         match key as u8 as char {
             'q' => quit = true,
-            'k' => match tab {
+            'K' => match panel {
+                Status::Todo => list_drag_up(&mut todos, &mut todo_curr),
+                Status::Done => list_drag_up(&mut dones, &mut done_curr),
+            },
+            'J' => match panel {
+                Status::Todo => list_drag_down(&mut todos, &mut todo_curr),
+                Status::Done => list_drag_down(&mut dones, &mut done_curr),
+            },
+            'k' => match panel {
                 Status::Todo => list_up(&todos, &mut todo_curr),
                 Status::Done => list_up(&dones, &mut done_curr),
             },
-            'j' => match tab {
+            'j' => match panel {
                 Status::Todo => list_down(&todos, &mut todo_curr),
                 Status::Done => list_down(&dones, &mut done_curr),
             },
-            '\n' => match tab {
+            '\n' => match panel {
                 Status::Todo => list_transfer(&mut dones, &mut todos, &mut todo_curr),
                 Status::Done => list_transfer(&mut todos, &mut dones, &mut done_curr),
             },
             '\t' => {
-                tab = tab.toggle();
+                panel = panel.toggle();
             }
             _ => {
-                //   todos.push(format!("{}", key));
+                //    todos.push(format!("{}", key));
             }
         }
     }
