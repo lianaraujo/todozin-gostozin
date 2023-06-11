@@ -216,7 +216,7 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
 // TODO(#4): edit the items
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
-// TODO: save the state on SIGINT
+// TODO(#9): save the state on SIGINT
 // TODO: jump to the end and beggining of the list
 fn main() {
     let mut args = env::args();
@@ -242,6 +242,7 @@ fn main() {
     init_pair(HIGHLIGHT_PAIR, COLOR_BLACK, COLOR_WHITE);
     let mut quit = false;
     let mut panel = Status::Todo;
+    let mut editing = false;
     let mut ui = Ui::default();
     while !quit {
         erase();
