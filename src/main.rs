@@ -173,6 +173,14 @@ fn list_down(list: &Vec<String>, list_curr: &mut usize) {
         }
     }
 }
+fn list_first(list_curr: &mut usize) {
+    *list_curr = 0;
+}
+fn list_last(list: &[String], list_curr: &mut usize) {
+    if !list.is_empty() {
+        *list_curr = list.len() - 1;
+    }
+}
 fn list_transfer(
     list_dst: &mut Vec<String>,
     list_src: &mut Vec<String>,
@@ -217,7 +225,6 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
 // TODO(#9): save the state on SIGINT
-// TODO(#10): jump to the end and beggining of the list
 fn main() {
     let mut args = env::args();
     args.next().unwrap();
@@ -318,6 +325,14 @@ fn main() {
             'j' => match panel {
                 Status::Todo => list_down(&todos, &mut todo_curr),
                 Status::Done => list_down(&dones, &mut done_curr),
+            },
+            'g' => match panel {
+                Status::Todo => list_first(&mut todo_curr),
+                Status::Done => list_first(&mut done_curr),
+            },
+            'G' => match panel {
+                Status::Todo => list_last(&todos, &mut todo_curr),
+                Status::Done => list_last(&dones, &mut done_curr),
             },
             '\n' => match panel {
                 Status::Todo => list_transfer(&mut dones, &mut todos, &mut todo_curr),
