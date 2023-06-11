@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::ops::{Add, Mul};
 use std::{env, process};
+mod ctrlc;
 const REGULAR_PAIR: i16 = 0;
 const HIGHLIGHT_PAIR: i16 = 1;
 #[derive(Default, Copy, Clone)]
@@ -193,6 +194,14 @@ fn list_transfer(
         }
     }
 }
+fn list_delete(list: &mut Vec<String>, list_curr: &mut usize) {
+    if *list_curr < list.len() {
+        list.remove(*list_curr);
+        if *list_curr >= list.len() && !list.is_empty() {
+            *list_curr = list.len() - 1;
+        }
+    }
+}
 fn load_state(todos: &mut Vec<String>, dones: &mut Vec<String>, file_path: &str) -> io::Result<()> {
     let file = File::open(file_path)?;
     for (index, line) in BufReader::new(file).lines().enumerate() {
@@ -221,12 +230,11 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
     }
 }
 // TODO(#2): add new items to TODO
-// TODO(#3): delete items
 // TODO(#4): edit the items
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
-// TODO(#9): save the state on SIGINT
 fn main() {
+    ctrlc::init();
     let mut args = env::args();
     args.next().unwrap();
     let file_path = match args.next() {
@@ -257,6 +265,7 @@ fn main() {
     }
     initscr();
     noecho();
+    timeout(16);
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
     start_color();
     init_pair(REGULAR_PAIR, COLOR_WHITE, COLOR_BLACK);
@@ -265,7 +274,7 @@ fn main() {
     let mut panel = Status::Todo;
     let mut editing = false;
     let mut ui = Ui::default();
-    while !quit {
+    while !quit && !ctrlc::poll() {
         erase();
         let mut x = 0;
         let mut y = 0;
@@ -273,7 +282,6 @@ fn main() {
         ui.begin(Vec2::new(0, 0), LayoutKind::Vert);
         {
             ui.label_fixed_width(&notification, x, REGULAR_PAIR);
-            notification.clear();
             ui.label_fixed_width("", x, REGULAR_PAIR);
             ui.begin_layout(LayoutKind::Horz);
             {
@@ -329,6 +337,9 @@ fn main() {
         ui.end();
         refresh();
         let key = getch();
+        if key != ERR {
+            notification.clear();
+        }
         match key as u8 as char {
             'q' => quit = true,
             'K' => match panel {
@@ -355,6 +366,10 @@ fn main() {
                 Status::Todo => list_last(&todos, &mut todo_curr),
                 Status::Done => list_last(&dones, &mut done_curr),
             },
+            'd' => match panel {
+                Status::Todo => list_delete(&mut todos, &mut todo_curr),
+                Status::Done => list_delete(&mut dones, &mut done_curr),
+            },
             '\n' => match panel {
                 Status::Todo => {
                     list_transfer(&mut dones, &mut todos, &mut todo_curr);
@@ -369,7 +384,7 @@ fn main() {
                 panel = panel.toggle();
             }
             _ => {
-                //    todos.push(format!("{}", key));
+                //                todos.push(format!("{}", key));
             }
         }
     }
