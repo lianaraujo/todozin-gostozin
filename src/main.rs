@@ -100,7 +100,7 @@ impl Ui {
             .expect("Unbalanced Ui::begin_layout() and Ui::end_layout() calls")
             .add_widget(layout.size)
     }
-    fn label(&mut self, text: &str, pair: i16) {
+    fn label_fixed_width(&mut self, text: &str, width: i32, pair: i16) {
         let layout = self
             .layouts
             .last_mut()
@@ -110,7 +110,10 @@ impl Ui {
         attron(COLOR_PAIR(pair));
         addstr(text);
         attroff(COLOR_PAIR(pair));
-        layout.add_widget(Vec2::new(text.len() as i32, 1));
+        layout.add_widget(Vec2::new(width, 1));
+    }
+    fn label(&mut self, text: &str, pair: i16) {
+        self.label_fixed_width(text, text.len() as i32, pair);
     }
     fn end(&mut self) {
         self.layouts
@@ -225,12 +228,16 @@ fn main() {
     let mut ui = Ui::default();
     while !quit {
         erase();
+        let mut x = 0;
+        let mut y = 0;
+        getmaxyx(stdscr(), &mut y, &mut x);
         ui.begin(Vec2::new(0, 0), LayoutKind::Horz);
         {
             ui.begin_layout(LayoutKind::Vert);
             {
-                ui.label(
+                ui.label_fixed_width(
                     "TODO",
+                    x / 2,
                     if tab == Status::Todo {
                         HIGHLIGHT_PAIR
                     } else {
@@ -251,8 +258,9 @@ fn main() {
             ui.end_layout();
             ui.begin_layout(LayoutKind::Vert);
             {
-                ui.label(
+                ui.label_fixed_width(
                     "DONE",
+                    x / 2,
                     if tab == Status::Done {
                         HIGHLIGHT_PAIR
                     } else {
