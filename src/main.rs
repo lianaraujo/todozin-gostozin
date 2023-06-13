@@ -116,6 +116,71 @@ impl Ui {
     fn label(&mut self, text: &str, pair: i16) {
         self.label_fixed_width(text, text.len() as i32, pair);
     }
+    fn edit_field(
+        &mut self,
+        buffer: &mut String,
+        cursor: &mut usize,
+        key_current: &mut Option<i32>,
+        width: i32,
+    ) {
+        let layout = self
+            .layouts
+            .last_mut()
+            .expect("Trying to render edit field outside of any layout");
+        let pos = layout.available_pos();
+        if *cursor > buffer.len() {
+            *cursor = buffer.len();
+        }
+        if let Some(key) = key_current.take() {
+            match key {
+                32..=126 => {
+                    if *cursor >= buffer.len() {
+                        buffer.push(key as u8 as char);
+                    } else {
+                        buffer.insert(*cursor, key as u8 as char)
+                    }
+                    *cursor += 1;
+                }
+                constants::KEY_LEFT => {
+                    if *cursor > 0 {
+                        *cursor -= 1
+                    }
+                }
+                constants::KEY_RIGHT => {
+                    if *cursor < buffer.len() {
+                        *cursor += 1
+                    }
+                }
+                constants::KEY_DC => {
+                    if *cursor < buffer.len() {
+                        buffer.remove(*cursor);
+                    }
+                }
+                constants::KEY_BACKSPACE => {
+                    if *cursor > 0 {
+                        *cursor -= 1;
+                        buffer.remove(*cursor);
+                    }
+                }
+                _ => {
+                    *key_current = Some(key);
+                }
+            }
+        }
+        {
+            mv(pos.y, pos.x);
+            attron(COLOR_PAIR(REGULAR_PAIR));
+            addstr(buffer);
+            attroff(COLOR_PAIR(REGULAR_PAIR));
+            layout.add_widget(Vec2::new(width, 1));
+        }
+        {
+            mv(pos.y, pos.x + *cursor as i32);
+            attron(COLOR_PAIR(HIGHLIGHT_PAIR));
+            addstr(buffer.get(*cursor..=*cursor).unwrap_or(" "));
+            attroff(COLOR_PAIR(HIGHLIGHT_PAIR));
+        }
+    }
     fn end(&mut self) {
         self.layouts
             .pop()
@@ -230,7 +295,6 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
     }
 }
 // TODO(#2): add new items to TODO
-// TODO(#4): edit the items
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
 fn main() {
@@ -266,6 +330,7 @@ fn main() {
     initscr();
     noecho();
     timeout(16);
+    keypad(stdscr(), true);
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
     start_color();
     init_pair(REGULAR_PAIR, COLOR_WHITE, COLOR_BLACK);
@@ -273,7 +338,9 @@ fn main() {
     let mut quit = false;
     let mut panel = Status::Todo;
     let mut editing = false;
+    let mut editing_cursor = 0;
     let mut ui = Ui::default();
+    let mut key_current = None;
     while !quit && !ctrlc::poll() {
         erase();
         let mut x = 0;
@@ -287,47 +354,119 @@ fn main() {
             {
                 ui.begin_layout(LayoutKind::Vert);
                 {
-                    ui.label_fixed_width(
-                        "TODO",
-                        x / 2,
-                        if panel == Status::Todo {
-                            HIGHLIGHT_PAIR
-                        } else {
-                            REGULAR_PAIR
-                        },
-                    );
-                    for (index, todo) in todos.iter().enumerate() {
-                        ui.label(
-                            &format!("- [ ] {}", todo),
-                            if index == todo_curr && panel == Status::Todo {
-                                HIGHLIGHT_PAIR
+                    if panel == Status::Todo {
+                        ui.label_fixed_width("TODO", x / 2, HIGHLIGHT_PAIR);
+                        for (index, todo) in todos.iter_mut().enumerate() {
+                            if index == todo_curr {
+                                if editing {
+                                    ui.edit_field(
+                                        todo,
+                                        &mut editing_cursor,
+                                        &mut key_current,
+                                        x / 2,
+                                    );
+                                    if let Some('\n') = key_current.take().map(|x| x as u8 as char)
+                                    {
+                                        editing = false;
+                                    }
+                                } else {
+                                    ui.label(&format!("- [ ] {}", todo), HIGHLIGHT_PAIR);
+                                    if let Some('i') = key_current.map(|x| x as u8 as char) {
+                                        editing = true;
+                                        editing_cursor = todo.len();
+                                        key_current = None;
+                                    }
+                                }
                             } else {
-                                REGULAR_PAIR
-                            },
-                        );
+                                ui.label(&format!("- [ ] {}", todo), REGULAR_PAIR);
+                            }
+                        }
+                        if let Some(key) = key_current.take() {
+                            match key as u8 as char {
+                                'K' => list_drag_up(&mut todos, &mut todo_curr),
+                                'J' => list_drag_down(&mut todos, &mut todo_curr),
+                                'k' => list_up(&todos, &mut todo_curr),
+                                'j' => list_down(&todos, &mut todo_curr),
+                                'g' => list_first(&mut todo_curr),
+                                'G' => list_last(&todos, &mut todo_curr),
+                                '\n' => {
+                                    list_transfer(&mut dones, &mut todos, &mut todo_curr);
+                                    notification.push_str("Done")
+                                }
+                                '\t' => {
+                                    panel = panel.toggle();
+                                }
+                                _ => {
+                                    key_current = Some(key);
+                                }
+                            }
+                        }
+                    } else {
+                        ui.label_fixed_width("TODO", x / 2, REGULAR_PAIR);
+                        for todo in todos.iter() {
+                            ui.label(&format!("- [ ] {}", todo), REGULAR_PAIR);
+                        }
                     }
                 }
                 ui.end_layout();
                 ui.begin_layout(LayoutKind::Vert);
                 {
-                    ui.label_fixed_width(
-                        "DONE",
-                        x / 2,
-                        if panel == Status::Done {
-                            HIGHLIGHT_PAIR
-                        } else {
-                            REGULAR_PAIR
-                        },
-                    );
-                    for (index, done) in dones.iter().enumerate() {
-                        ui.label(
-                            &format!("- [x] {}", done),
-                            if index == done_curr && panel == Status::Done {
-                                HIGHLIGHT_PAIR
+                    if panel == Status::Done {
+                        ui.label_fixed_width("DONE", x / 2, HIGHLIGHT_PAIR);
+                        for (index, done) in dones.iter_mut().enumerate() {
+                            if index == done_curr {
+                                if editing {
+                                    ui.edit_field(
+                                        done,
+                                        &mut editing_cursor,
+                                        &mut key_current,
+                                        x / 2,
+                                    );
+                                    if let Some('\n') = key_current.take().map(|x| x as u8 as char)
+                                    {
+                                        editing = false;
+                                    }
+                                } else {
+                                    ui.label(&format!("- [x] {}", done), HIGHLIGHT_PAIR);
+                                    if let Some('i') = key_current.map(|x| x as u8 as char) {
+                                        editing = true;
+                                        editing_cursor = done.len();
+                                        key_current = None;
+                                    }
+                                }
                             } else {
-                                REGULAR_PAIR
-                            },
-                        );
+                                ui.label(&format!("- [x] {}", done), REGULAR_PAIR);
+                            }
+                        }
+                        if let Some(key) = key_current.take() {
+                            match key as u8 as char {
+                                'K' => list_drag_up(&mut dones, &mut done_curr),
+                                'J' => list_drag_down(&mut dones, &mut done_curr),
+                                'k' => list_up(&dones, &mut done_curr),
+                                'j' => list_down(&dones, &mut done_curr),
+                                'g' => list_first(&mut done_curr),
+                                'G' => list_last(&dones, &mut done_curr),
+                                'd' => {
+                                    list_delete(&mut dones, &mut done_curr);
+                                    notification.push_str("Into the Abyss!")
+                                }
+                                '\n' => {
+                                    list_transfer(&mut todos, &mut dones, &mut done_curr);
+                                    notification.push_str("No, not done yet...")
+                                }
+                                '\t' => {
+                                    panel = panel.toggle();
+                                }
+                                _ => {
+                                    key_current = Some(key);
+                                }
+                            }
+                        }
+                    } else {
+                        ui.label_fixed_width("DONE", x / 2, REGULAR_PAIR);
+                        for done in dones.iter() {
+                            ui.label(&format!("- [x] {}", done), REGULAR_PAIR);
+                        }
                     }
                 }
                 ui.end_layout();
@@ -335,57 +474,17 @@ fn main() {
             ui.end_layout();
         }
         ui.end();
+        // if let Some(key) = key_current {
+        //     todos.push(format!("key {}", key));
+        // }
+        if let Some('q') = key_current.take().map(|x| x as u8 as char) {
+            quit = true;
+        }
         refresh();
         let key = getch();
         if key != ERR {
             notification.clear();
-        }
-        match key as u8 as char {
-            'q' => quit = true,
-            'K' => match panel {
-                Status::Todo => list_drag_up(&mut todos, &mut todo_curr),
-                Status::Done => list_drag_up(&mut dones, &mut done_curr),
-            },
-            'J' => match panel {
-                Status::Todo => list_drag_down(&mut todos, &mut todo_curr),
-                Status::Done => list_drag_down(&mut dones, &mut done_curr),
-            },
-            'k' => match panel {
-                Status::Todo => list_up(&todos, &mut todo_curr),
-                Status::Done => list_up(&dones, &mut done_curr),
-            },
-            'j' => match panel {
-                Status::Todo => list_down(&todos, &mut todo_curr),
-                Status::Done => list_down(&dones, &mut done_curr),
-            },
-            'g' => match panel {
-                Status::Todo => list_first(&mut todo_curr),
-                Status::Done => list_first(&mut done_curr),
-            },
-            'G' => match panel {
-                Status::Todo => list_last(&todos, &mut todo_curr),
-                Status::Done => list_last(&dones, &mut done_curr),
-            },
-            'd' => match panel {
-                Status::Todo => list_delete(&mut todos, &mut todo_curr),
-                Status::Done => list_delete(&mut dones, &mut done_curr),
-            },
-            '\n' => match panel {
-                Status::Todo => {
-                    list_transfer(&mut dones, &mut todos, &mut todo_curr);
-                    notification.push_str("Done")
-                }
-                Status::Done => {
-                    list_transfer(&mut todos, &mut dones, &mut done_curr);
-                    notification.push_str("No, not done yet...")
-                }
-            },
-            '\t' => {
-                panel = panel.toggle();
-            }
-            _ => {
-                //                todos.push(format!("{}", key));
-            }
+            key_current = Some(key);
         }
     }
     endwin();
