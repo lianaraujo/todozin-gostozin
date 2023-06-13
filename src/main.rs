@@ -116,6 +116,71 @@ impl Ui {
     fn label(&mut self, text: &str, pair: i16) {
         self.label_fixed_width(text, text.len() as i32, pair);
     }
+    fn edit_field(
+        &mut self,
+        buffer: &mut String,
+        cursor: &mut usize,
+        key_current: &mut Option<i32>,
+        width: i32,
+    ) {
+        let layout = self
+            .layouts
+            .last_mut()
+            .expect("Trying to render edit field outside of any layout");
+        let pos = layout.available_pos();
+        if *cursor > buffer.len() {
+            *cursor = buffer.len();
+        }
+        if let Some(key) = key_current.take() {
+            match key {
+                32..=126 => {
+                    if *cursor >= buffer.len() {
+                        buffer.push(key as u8 as char);
+                    } else {
+                        buffer.insert(*cursor, key as u8 as char)
+                    }
+                    *cursor += 1;
+                }
+                constants::KEY_LEFT => {
+                    if *cursor > 0 {
+                        *cursor -= 1
+                    }
+                }
+                constants::KEY_RIGHT => {
+                    if *cursor < buffer.len() {
+                        *cursor += 1
+                    }
+                }
+                constants::KEY_DC => {
+                    if *cursor < buffer.len() {
+                        buffer.remove(*cursor);
+                    }
+                }
+                constants::KEY_BACKSPACE => {
+                    if *cursor > 0 {
+                        *cursor -= 1;
+                        buffer.remove(*cursor);
+                    }
+                }
+                _ => {
+                    *key_current = Some(key);
+                }
+            }
+        }
+        {
+            mv(pos.y, pos.x);
+            attron(COLOR_PAIR(REGULAR_PAIR));
+            addstr(buffer);
+            attroff(COLOR_PAIR(REGULAR_PAIR));
+            layout.add_widget(Vec2::new(width, 1));
+        }
+        {
+            mv(pos.y, pos.x + *cursor as i32);
+            attron(COLOR_PAIR(HIGHLIGHT_PAIR));
+            addstr(buffer.get(*cursor..=*cursor).unwrap_or(" "));
+            attroff(COLOR_PAIR(HIGHLIGHT_PAIR));
+        }
+    }
     fn end(&mut self) {
         self.layouts
             .pop()
@@ -266,19 +331,18 @@ fn main() {
     initscr();
     noecho();
     timeout(16);
+    keypad(stdscr(), true);
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
     start_color();
     init_pair(REGULAR_PAIR, COLOR_WHITE, COLOR_BLACK);
     init_pair(HIGHLIGHT_PAIR, COLOR_BLACK, COLOR_WHITE);
     let mut quit = false;
     let mut panel = Status::Todo;
+    let mut editing = false;
+    let mut editing_cursor = 0;
     let mut ui = Ui::default();
     let mut key_current = None;
     while !quit && !ctrlc::poll() {
-        if let Some('q') = key_current.map(|x| x as u8 as char) {
-            quit = true;
-            key_current = None;
-        }
         erase();
         let mut x = 0;
         let mut y = 0;
@@ -293,17 +357,32 @@ fn main() {
                 {
                     if panel == Status::Todo {
                         ui.label_fixed_width("TODO", x / 2, HIGHLIGHT_PAIR);
-                        for (index, todo) in todos.iter().enumerate() {
-                            ui.label(
-                                &format!("- [ ] {}", todo),
-                                if index == todo_curr {
-                                    HIGHLIGHT_PAIR
+                        for (index, todo) in todos.iter_mut().enumerate() {
+                            if index == todo_curr {
+                                if editing {
+                                    ui.edit_field(
+                                        todo,
+                                        &mut editing_cursor,
+                                        &mut key_current,
+                                        x / 2,
+                                    );
+                                    if let Some('\n') = key_current.take().map(|x| x as u8 as char)
+                                    {
+                                        editing = false;
+                                    }
                                 } else {
-                                    REGULAR_PAIR
-                                },
-                            );
+                                    ui.label(&format!("- [ ] {}", todo), HIGHLIGHT_PAIR);
+                                    if let Some('i') = key_current.map(|x| x as u8 as char) {
+                                        editing = true;
+                                        editing_cursor = todo.len();
+                                        key_current = None;
+                                    }
+                                }
+                            } else {
+                                ui.label(&format!("- [ ] {}", todo), REGULAR_PAIR);
+                            }
                         }
-                        if let Some(key) = key_current {
+                        if let Some(key) = key_current.take() {
                             match key as u8 as char {
                                 'K' => list_drag_up(&mut todos, &mut todo_curr),
                                 'J' => list_drag_down(&mut todos, &mut todo_curr),
@@ -318,9 +397,10 @@ fn main() {
                                 '\t' => {
                                     panel = panel.toggle();
                                 }
-                                _ => {}
+                                _ => {
+                                    key_current = Some(key);
+                                }
                             }
-                            key_current = None;
                         }
                     } else {
                         ui.label_fixed_width("TODO", x / 2, REGULAR_PAIR);
@@ -344,7 +424,7 @@ fn main() {
                                 },
                             );
                         }
-                        if let Some(key) = key_current {
+                        if let Some(key) = key_current.take() {
                             match key as u8 as char {
                                 'K' => list_drag_up(&mut dones, &mut done_curr),
                                 'J' => list_drag_down(&mut dones, &mut done_curr),
@@ -363,9 +443,10 @@ fn main() {
                                 '\t' => {
                                     panel = panel.toggle();
                                 }
-                                _ => {}
+                                _ => {
+                                    key_current = Some(key);
+                                }
                             }
-                            key_current = None;
                         }
                     } else {
                         ui.label_fixed_width("DONE", x / 2, REGULAR_PAIR);
@@ -379,6 +460,12 @@ fn main() {
             ui.end_layout();
         }
         ui.end();
+        // if let Some(key) = key_current {
+        //     todos.push(format!("key {}", key));
+        // }
+        if let Some('q') = key_current.take().map(|x| x as u8 as char) {
+            quit = true;
+        }
         refresh();
         let key = getch();
         if key != ERR {
