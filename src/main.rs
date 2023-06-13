@@ -414,15 +414,30 @@ fn main() {
                 {
                     if panel == Status::Done {
                         ui.label_fixed_width("DONE", x / 2, HIGHLIGHT_PAIR);
-                        for (index, done) in dones.iter().enumerate() {
-                            ui.label(
-                                &format!("- [x] {}", done),
-                                if index == done_curr {
-                                    HIGHLIGHT_PAIR
+                        for (index, done) in dones.iter_mut().enumerate() {
+                            if index == done_curr {
+                                if editing {
+                                    ui.edit_field(
+                                        done,
+                                        &mut editing_cursor,
+                                        &mut key_current,
+                                        x / 2,
+                                    );
+                                    if let Some('\n') = key_current.take().map(|x| x as u8 as char)
+                                    {
+                                        editing = false;
+                                    }
                                 } else {
-                                    REGULAR_PAIR
-                                },
-                            );
+                                    ui.label(&format!("- [x] {}", done), HIGHLIGHT_PAIR);
+                                    if let Some('i') = key_current.map(|x| x as u8 as char) {
+                                        editing = true;
+                                        editing_cursor = done.len();
+                                        key_current = None;
+                                    }
+                                }
+                            } else {
+                                ui.label(&format!("- [x] {}", done), REGULAR_PAIR);
+                            }
                         }
                         if let Some(key) = key_current.take() {
                             match key as u8 as char {
