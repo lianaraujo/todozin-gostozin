@@ -295,7 +295,6 @@ fn save_state(todos: &[String], dones: &[String], file_path: &str) {
     }
 }
 // TODO(#2): add new items to TODO
-// TODO(#4): edit the items
 // TODO(#5): keep track of date when the item was DONE
 // TODO(#6): undo system
 fn main() {
