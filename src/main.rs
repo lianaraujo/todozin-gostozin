@@ -371,7 +371,7 @@ fn main() {
                                     }
                                 } else {
                                     ui.label(&format!("- [ ] {}", todo), HIGHLIGHT_PAIR);
-                                    if let Some('i') = key_current.map(|x| x as u8 as char) {
+                                    if let Some('r') = key_current.map(|x| x as u8 as char) {
                                         editing = true;
                                         editing_cursor = todo.len();
                                         key_current = None;
@@ -389,6 +389,22 @@ fn main() {
                                 'j' => list_down(&todos, &mut todo_curr),
                                 'g' => list_first(&mut todo_curr),
                                 'G' => list_last(&todos, &mut todo_curr),
+                                'i' => {
+                                    todos.insert(todo_curr, String::new());
+                                    editing_cursor = 0;
+                                    editing = true;
+                                    notification.push_str("What needs to be done?")
+                                }
+                                'd' => notification.push_str(
+                                    "Can't remove items from TODO. Mark it as DONE first.",
+                                ),
+                                'o' => {
+                                    todo_curr += 1;
+                                    todos.insert(todo_curr, String::new());
+                                    editing_cursor = 0;
+                                    editing = true;
+                                    notification.push_str("What needs to be done?")
+                                }
                                 '\n' => {
                                     list_transfer(&mut dones, &mut todos, &mut todo_curr);
                                     notification.push_str("Done")
@@ -428,7 +444,7 @@ fn main() {
                                     }
                                 } else {
                                     ui.label(&format!("- [x] {}", done), HIGHLIGHT_PAIR);
-                                    if let Some('i') = key_current.map(|x| x as u8 as char) {
+                                    if let Some('r') = key_current.map(|x| x as u8 as char) {
                                         editing = true;
                                         editing_cursor = done.len();
                                         key_current = None;
